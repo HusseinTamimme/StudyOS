@@ -13,16 +13,16 @@ import os
 from datetime import date, timedelta
 from typing import List, Dict, Any
 import pandas as pd
-import streamlit as st
-import pandas as pd
-import random
-import re
-import json
 import math
-import os
-from datetime import datetime, date
+from datetime import datetime
 from PyPDF2 import PdfReader
-from openai import OpenAI
+
+# Try importing OpenAI
+try:
+    from openai import OpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
 
 # Page config
 st.set_page_config(
@@ -162,17 +162,27 @@ has_ai = False
 
 def setup_openai():
     global client, has_ai
-    api_key = (os.environ.get("OPENAI_API_KEY") or 
-               st.secrets.get("OPENAI_API_KEY", type=str) or 
-               app_state.get('api_key', ''))
-    
+
+    # Safely read from st.secrets
+    secret_key = None
+    try:
+        secret_key = st.secrets.get("OPENAI_API_KEY")
+    except Exception:
+        pass
+
+    api_key = (
+        os.environ.get("OPENAI_API_KEY")
+        or secret_key
+        or app_state.get('api_key', '')
+    )
+
     if api_key and OPENAI_AVAILABLE:
         try:
             client = OpenAI(api_key=api_key)
             has_ai = True
             app_state['api_key'] = api_key
             return True
-        except:
+        except Exception:
             pass
     has_ai = False
     return False
@@ -189,7 +199,7 @@ def extract_pdf_text(uploaded_file) -> str:
                 text = page.extract_text()
                 if text and len(text.strip()) > 20:
                     full_text += text + "\n"
-            except:
+            except Exception:
                 continue
         return full_text.strip()
     except Exception:
@@ -198,17 +208,16 @@ def extract_pdf_text(uploaded_file) -> str:
 def safe_json_parse(response: str) -> Dict:
     """Safely parse AI JSON response"""
     try:
-        # Clean response
         cleaned = re.sub(r'```json|```', '', response).strip()
         return json.loads(cleaned)
-    except:
+    except Exception:
         return {}
 
 def call_ai(prompt: str, system_prompt: str = "You are a helpful assistant.", max_tokens: int = 1200) -> str:
     """Call OpenAI with fallback"""
     if not has_ai:
         return fallback_ai(prompt)
-    
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
@@ -235,21 +244,20 @@ def fallback_ai(prompt: str) -> str:
         "memory|page|virtual": "**Virtual Memory**: Uses paging and demand paging. Page faults trigger page replacement (FIFO/LRU).",
         "quiz": "Take the Quiz page to test your knowledge! Your current readiness is {:.0f}%.".format(app_state['readiness'])
     }
-    
+
     for key, response in responses.items():
         if re.search(key, p_lower):
-            return response.format(app_state['readiness'])
-    
+            return response
+
     return "I found this in your lecture materials. Focus on Processes, Scheduling, Deadlocks, and Memory Management."
 
-def process_lectures(self):
+def process_lectures():
     """Process uploaded lectures with AI"""
     text = app_state['lecture_text']
     if not text:
         return
-    
+
     with st.spinner("Generating AI workspace..."):
-        # Generate summary and key points
         summary_prompt = f"""
         Analyze this lecture and return JSON:
         {{
@@ -257,25 +265,23 @@ def process_lectures(self):
             "key_points": ["bullet 1", "bullet 2", ...],
             "topics": ["topic1", "topic2"]
         }}
-        
+
         LECTURE: {text[:3000]}
         """
-        
+
         ai_response = call_ai(summary_prompt, "Return ONLY valid JSON. No explanations.")
         parsed = safe_json_parse(ai_response)
-        
+
         app_state['summary'] = parsed.get('summary', 'Comprehensive OS lecture on core concepts.')
         app_state['key_points'] = parsed.get('key_points', ['Processes & PCB', 'CPU Scheduling', 'Deadlocks', 'Memory Management'])
         app_state['topics'] = parsed.get('topics', ['Processes', 'Threads', 'Scheduling', 'Deadlocks', 'Memory'])
         app_state['weak_topics'] = random.sample(app_state['topics'], min(2, len(app_state['topics'])))
-        
-        # Generate flashcards
+
         app_state['flashcards'] = [
             {"front": "What is PCB?", "back": "Process Control Block containing process state info"},
             {"front": "Deadlock conditions?", "back": "4: Mutual Exclusion, Hold & Wait, No Preemption, Circular Wait"}
         ]
-        
-        # Generate quiz
+
         app_state['quiz_questions'] = [
             {
                 "question": "What does PCB contain?",
@@ -290,16 +296,16 @@ def process_lectures(self):
                 "explanation": "Coffman's 4 conditions"
             }
         ]
-        
+
         app_state['pdf_processed'] = True
-        app_state['readiness'] = 45.0  # Initial estimate
+        app_state['readiness'] = 45.0
 
 def calculate_readiness(quiz_score: float, completed_topics: int, total_topics: int, days_left: int) -> float:
     """Production readiness formula"""
     quiz_contrib = quiz_score * 0.4
     completion_contrib = (completed_topics / max(1, total_topics)) * 0.35
     time_contrib = max(0, 0.25 - (days_left * 0.02))
-    
+
     readiness = quiz_contrib + completion_contrib + time_contrib
     return min(100.0, max(0.0, readiness * 100))
 
@@ -309,46 +315,46 @@ def main():
     with st.sidebar:
         st.markdown('<div class="nav-title">📚 StudyOS</div>', unsafe_allow_html=True)
         st.markdown('<div style="color: #94a3b8; font-size: 0.9rem;">Panic → Plan</div>', unsafe_allow_html=True)
-        
+
         pages = {
             "🏠 Home": "home",
             "📤 Upload Lectures": "upload",
-            "📊 Dashboard": "dashboard", 
+            "📊 Dashboard": "dashboard",
             "🚀 Crash Mode": "crash",
             "📖 AI Workspace": "workspace",
             "💬 AI Tutor": "chat",
             "❓ Quiz": "quiz",
             "🃏 Flashcards": "flashcards"
         }
-        
+
         for page_name, page_key in pages.items():
             if st.button(page_name, key=f"nav_{page_key}"):
                 app_state['current_page'] = page_key
                 st.rerun()
-        
+
         st.markdown("---")
         st.markdown("### 🔑 OpenAI (Optional)")
-        api_key = st.text_input("API Key:", type="password", key="api_key_input", 
+        api_key = st.text_input("API Key:", type="password", key="api_key_input",
                                help="Demo works without this")
         if api_key and api_key != app_state.get('api_key', ''):
             app_state['api_key'] = api_key
             setup_openai()
             st.rerun()
-        
+
         if has_ai:
             st.success("✅ Real AI Active")
             st.caption("gpt-4o-mini")
         else:
             st.info("⚡ Demo Mode")
-        
+
         if app_state['pdf_processed']:
             st.markdown("---")
             st.metric("Readiness", f"{app_state['readiness']:.0f}%")
             st.metric("Days Left", app_state['days_left'])
-    
+
     # Page routing
     page = app_state.get('current_page', 'home')
-    
+
     # Header
     st.markdown("""
     <div class="header-hero">
@@ -356,7 +362,7 @@ def main():
         <div style="font-size: 1.1rem; opacity: 0.9;">AI Exam Operating System</div>
     </div>
     """, unsafe_allow_html=True)
-    
+
     if page == 'home':
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -367,7 +373,7 @@ def main():
                 <p style="color: #64748b;">Lectures → AI workspace</p>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col2:
             st.markdown("""
             <div class="metric-card">
@@ -376,7 +382,7 @@ def main():
                 <p style="color: #64748b;">Exam &lt;3 days? Priority only</p>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col3:
             st.markdown("""
             <div class="metric-card">
@@ -385,7 +391,7 @@ def main():
                 <p style="color: #64748b;">Exact preparation score</p>
             </div>
             """, unsafe_allow_html=True)
-        
+
         st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
@@ -400,7 +406,7 @@ def main():
                 </ul>
             </div>
             """, unsafe_allow_html=True)
-        
+
         with col2:
             st.markdown("""
             <div style="background: #f0fdf4; padding: 2rem; border-radius: 16px;">
@@ -413,22 +419,22 @@ def main():
                 </ul>
             </div>
             """, unsafe_allow_html=True)
-    
+
     elif page == 'upload':
         st.markdown('<h2 style="color: #1e293b;">📤 Upload & Process</h2>', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns([3,1])
+
+        col1, col2 = st.columns([3, 1])
         with col1:
             uploaded_files = st.file_uploader(
                 "📄 Lecture PDFs", type="pdf", accept_multiple_files=True
             )
-        
+
         with col2:
             app_state['exam_date'] = st.date_input(
                 "📅 Exam Date", value=app_state['exam_date']
             )
             app_state['days_left'] = max(0, (app_state['exam_date'] - date.today()).days)
-        
+
         col1, col2 = st.columns(2)
         with col1:
             if st.button("🎓 Load Sample OS Lecture", type="secondary", use_container_width=True):
@@ -438,7 +444,7 @@ def main():
                 process_lectures()
                 st.success("✅ Sample loaded!")
                 st.rerun()
-        
+
         if uploaded_files is not None and len(uploaded_files) > 0:
             if st.button(f"🎯 Process {len(uploaded_files)} Lecture(s)", type="primary", use_container_width=True):
                 with st.spinner("Extracting text..."):
@@ -452,24 +458,24 @@ def main():
                                 'name': file.name,
                                 'words': len(text.split())
                             })
-                    
+
                     app_state['lecture_text'] = full_text
                     app_state['lecture_title'] = "Your Lectures"
                     app_state['word_count'] = len(full_text.split())
-                
+
                 process_lectures()
                 st.balloons()
-        
+
         if app_state['pdf_processed']:
             st.success(f"✅ Workspace ready! ({app_state['word_count']:,} words processed)")
             st.markdown(f"**Course:** {app_state['lecture_title']}")
-    
+
     elif page == 'dashboard':
         if not app_state['pdf_processed']:
             st.warning("👆 Upload lectures first")
         else:
             st.markdown('<h2 style="color: #1e293b;">📊 Learning Dashboard</h2>', unsafe_allow_html=True)
-            
+
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.markdown(f"""
@@ -478,7 +484,7 @@ def main():
                     <div class="metric-label">Days Left</div>
                 </div>
                 """, unsafe_allow_html=True)
-            
+
             with col2:
                 readiness = app_state['readiness']
                 st.markdown(f"""
@@ -490,7 +496,7 @@ def main():
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
-            
+
             with col3:
                 st.markdown(f"""
                 <div class="metric-card">
@@ -498,12 +504,12 @@ def main():
                     <div class="metric-label">Weak Topics</div>
                 </div>
                 """, unsafe_allow_html=True)
-            
+
             if app_state['days_left'] <= 3:
                 st.markdown('<div class="badge-crash">🚨 CRASH MODE ACTIVE</div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div class="badge-ready">✅ Study Mode</div>', unsafe_allow_html=True)
-            
+
             st.markdown("### 🎯 Next Study Action")
             st.markdown(f"""
             <div class="module-card">
@@ -511,7 +517,7 @@ def main():
                 <p>25 minutes → 5 minute break → 10 question quiz</p>
             </div>
             """, unsafe_allow_html=True)
-    
+
     elif page == 'crash':
         st.markdown('<h2 style="color: #1e293b;">🚀 Crash Mode</h2>', unsafe_allow_html=True)
         if app_state['days_left'] > 3:
@@ -535,42 +541,38 @@ def main():
                 </ul>
             </div>
             """, unsafe_allow_html=True)
-    
+
     elif page == 'workspace':
         if not app_state['pdf_processed']:
             st.warning("👆 Process lectures first")
             st.stop()
-        
+
         st.markdown('<h2 style="color: #1e293b;">📖 AI Workspace</h2>', unsafe_allow_html=True)
         st.markdown('<div class="badge-ai">🤖 AI Generated</div>', unsafe_allow_html=True)
-        
+
         tab1, tab2 = st.tabs(["📝 Summary", "🎯 Key Points"])
         with tab1:
             st.markdown("### Executive Summary")
             st.markdown(app_state['summary'])
-        
+
         with tab2:
             st.markdown("### Key Learning Objectives")
             for point in app_state['key_points']:
                 st.markdown(f"• **{point}**")
-    
+
     elif page == 'chat':
         st.markdown('<h2 style="color: #1e293b;">💬 AI Tutor</h2>', unsafe_allow_html=True)
         st.info("💡 Ask questions about your uploaded lectures. I'll answer using lecture content only.")
-        
-        # Chat display
+
         for message in app_state['chat_history']:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
-        
-        # Chat input
+
         if prompt := st.chat_input("e.g. 'Explain deadlocks' or 'What is PCB?'"):
-            # Add user message
             app_state['chat_history'].append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
-            
-            # Generate AI response
+
             with st.chat_message("assistant"):
                 with st.spinner("Analyzing lecture..."):
                     context = app_state['lecture_text'][:4000] if app_state['pdf_processed'] else SAMPLE_LECTURE
@@ -579,14 +581,13 @@ def main():
                         "You are StudyOS AI Tutor. Answer ONLY using provided lecture. If unclear, say so politely."
                     )
                     st.markdown(response)
-            
-            # Store AI response
+
             app_state['chat_history'].append({"role": "assistant", "content": response})
             st.rerun()
-    
+
     elif page == 'quiz':
         st.markdown('<h2 style="color: #1e293b;">❓ Adaptive Quiz</h2>', unsafe_allow_html=True)
-        
+
         if st.button("🔄 Generate New Quiz", type="primary"):
             app_state['quiz_questions'] = [
                 {
@@ -614,44 +615,43 @@ def main():
             app_state['quiz_score'] = None
             app_state['quiz_answers'] = {}
             st.rerun()
-        
+
         if app_state.get('quiz_questions') and app_state['quiz_score'] is None:
-            # Active quiz
             total_questions = len(app_state['quiz_questions'])
             user_answers = {}
-            
+
             for i, q in enumerate(app_state['quiz_questions']):
                 st.markdown(f"**Q{i+1}** | {q['topic']}")
                 selected = st.radio("", q['choices'], key=f"quiz_{i}", horizontal=True)
                 user_answers[i] = q['choices'].index(selected)
-            
+
             if st.button("📤 Submit Quiz", type="primary"):
                 correct = 0
                 wrong_topics = []
-                
+
                 for i, user_idx in user_answers.items():
                     q = app_state['quiz_questions'][i]
                     if user_idx == q['correct']:
                         correct += 1
                     else:
                         wrong_topics.append(q['topic'])
-                
+
                 app_state['quiz_score'] = (correct / total_questions) * 100
+                app_state['quiz_answers'] = user_answers
                 app_state['readiness'] = calculate_readiness(
-                    app_state['quiz_score']/100, 
-                    1, len(app_state['topics']), 
+                    app_state['quiz_score'] / 100,
+                    1, len(app_state['topics']),
                     app_state['days_left']
                 )
                 app_state['weak_topics'] = wrong_topics[:2] or app_state['weak_topics']
                 st.rerun()
-        
+
         elif app_state['quiz_score'] is not None:
-            # Show results
             col1, col2 = st.columns(2)
             with col1:
                 st.metric("Score", f"{app_state['quiz_score']:.0f}%")
                 st.metric("Readiness", f"{app_state['readiness']:.0f}%", "↑12%")
-            
+
             st.markdown("### 📋 Wrong Answers")
             for i, q in enumerate(app_state['quiz_questions']):
                 user_choice = app_state['quiz_answers'].get(i, 0)
@@ -660,7 +660,7 @@ def main():
                 if not is_correct:
                     st.markdown(f"*Correct: {q['choices'][q['correct']]}*")
                     st.markdown(f"> {q['explanation']}")
-            
+
             col1, col2 = st.columns(2)
             with col1:
                 if st.button("🔄 New Quiz", type="secondary"):
@@ -670,7 +670,7 @@ def main():
                 if st.button("📊 Update Dashboard"):
                     app_state['current_page'] = 'dashboard'
                     st.rerun()
-    
+
     elif page == 'flashcards':
         st.markdown('<h2 style="color: #1e293b;">🃏 AI Flashcards</h2>', unsafe_allow_html=True)
         if not app_state['pdf_processed']:
