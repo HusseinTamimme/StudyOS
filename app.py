@@ -2,7 +2,7 @@
 StudyOS - AI Exam Operating System
 Production-Ready Hackathon MVP
 """
-pip install openai
+!pip install openai
 
 import streamlit as st
 import PyPDF2
