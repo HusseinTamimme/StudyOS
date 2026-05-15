@@ -1,15 +1,22 @@
 import streamlit as st
 import pandas as pd
 from datetime import date, timedelta
-from PyPDF2 import PdfReader
 
+from studyos_engine import (
+    extract_pdf_text,
+    generate_summary,
+    generate_key_points,
+    generate_flashcards,
+    generate_quiz,
+    estimate_readiness,
+    answer_from_lecture,
+    build_study_plan,
+    detect_topics_from_text,
+)
 
-# ============================================================
-# PAGE CONFIG
-# ============================================================
 
 st.set_page_config(
-    page_title="StudyOS Demo",
+    page_title="StudyOS",
     page_icon="🎓",
     layout="wide"
 )
@@ -19,35 +26,35 @@ st.set_page_config(
 # CSS
 # ============================================================
 
-st.markdown("""
-<style>
+st.markdown(
+    """
+    <style>
     .stApp {
         background: linear-gradient(180deg, #faf9ff 0%, #f7f8fc 100%);
     }
 
-    .main-title {
+    .hero-title {
+        text-align: center;
         font-size: 52px;
         font-weight: 900;
-        text-align: center;
         color: #232536;
-        margin-top: 20px;
         line-height: 1.1;
+        margin-top: 20px;
     }
 
-    .gradient-text {
+    .gradient {
         background: linear-gradient(90deg, #6d5dfc, #9b7cff);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
     }
 
-    .subtitle {
+    .hero-subtitle {
         text-align: center;
-        font-size: 18px;
+        max-width: 760px;
+        margin: 18px auto 35px auto;
         color: #777b8f;
-        max-width: 780px;
-        margin: 15px auto 35px auto;
+        font-size: 18px;
         line-height: 1.6;
-        font-weight: 500;
     }
 
     .badge {
@@ -61,67 +68,26 @@ st.markdown("""
         font-size: 13px;
     }
 
-    .section-card {
+    .card {
         background: white;
-        padding: 28px;
+        padding: 26px;
         border-radius: 24px;
         border: 1px solid #ececf4;
         box-shadow: 0 14px 35px rgba(40, 40, 70, 0.05);
-        margin-bottom: 25px;
+        margin-bottom: 22px;
     }
 
-    .section-heading {
-        font-size: 26px;
+    .card-title {
+        font-size: 25px;
         font-weight: 900;
         color: #252737;
         margin-bottom: 8px;
     }
 
-    .section-description {
+    .card-text {
         color: #777b8f;
         font-size: 15px;
         line-height: 1.6;
-        margin-bottom: 20px;
-    }
-
-    .feature-box {
-        background: white;
-        padding: 22px;
-        border-radius: 22px;
-        border: 1px solid #ececf4;
-        box-shadow: 0 12px 28px rgba(40, 40, 70, 0.04);
-        height: 100%;
-    }
-
-    .feature-title {
-        font-weight: 900;
-        color: #252737;
-        font-size: 18px;
-        margin-bottom: 8px;
-    }
-
-    .feature-text {
-        color: #777b8f;
-        font-size: 14px;
-        line-height: 1.5;
-    }
-
-    .crash-box {
-        background: #fff4f4;
-        border: 1px solid #ffd2d2;
-        color: #9f1d1d;
-        padding: 20px;
-        border-radius: 18px;
-        font-weight: 700;
-    }
-
-    .organized-box {
-        background: #f0fff7;
-        border: 1px solid #bdeed4;
-        color: #087443;
-        padding: 20px;
-        border-radius: 18px;
-        font-weight: 700;
     }
 
     div[data-testid="stMetric"] {
@@ -130,6 +96,29 @@ st.markdown("""
         border-radius: 20px;
         border: 1px solid #ececf4;
         box-shadow: 0 12px 28px rgba(40, 40, 70, 0.04);
+    }
+
+    .crash {
+        background: #fff4f4;
+        border: 1px solid #ffd2d2;
+        color: #9f1d1d;
+        padding: 18px;
+        border-radius: 18px;
+        font-weight: 750;
+    }
+
+    .organized {
+        background: #f0fff7;
+        border: 1px solid #bdeed4;
+        color: #087443;
+        padding: 18px;
+        border-radius: 18px;
+        font-weight: 750;
+    }
+
+    .small-muted {
+        color: #8a8d9f;
+        font-size: 13px;
     }
 
     .stButton > button {
@@ -145,130 +134,86 @@ st.markdown("""
         color: white;
         border: none;
     }
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
 # SESSION STATE
 # ============================================================
 
-if "uploaded" not in st.session_state:
-    st.session_state.uploaded = False
+defaults = {
+    "uploaded": False,
+    "lecture_name": "",
+    "lecture_text": "",
+    "summary": "",
+    "key_points": [],
+    "flashcards": [],
+    "quiz": [],
+    "topics": [],
+    "quiz_score": None,
+    "weak_topics": [],
+    "completed_topics": 0,
+    "exam_date": date.today() + timedelta(days=2),
+    "hours_per_day": 2.0,
+}
 
-if "uploaded_text" not in st.session_state:
-    st.session_state.uploaded_text = ""
-
-if "exam_date" not in st.session_state:
-    st.session_state.exam_date = date.today() + timedelta(days=2)
-
-if "quiz_score" not in st.session_state:
-    st.session_state.quiz_score = None
-
-if "weak_topics" not in st.session_state:
-    st.session_state.weak_topics = ["Deadlocks", "Memory Management"]
-
-
-# ============================================================
-# DEMO DATA
-# ============================================================
-
-TOPICS = [
-    "Process Management",
-    "CPU Scheduling",
-    "Memory Management",
-    "Deadlocks",
-    "File Systems"
-]
-
-FLASHCARDS = [
-    {
-        "front": "What is a process?",
-        "back": "A process is a program in execution."
-    },
-    {
-        "front": "What is CPU scheduling?",
-        "back": "CPU scheduling decides which process gets CPU time next."
-    },
-    {
-        "front": "What is deadlock?",
-        "back": "Deadlock happens when processes wait forever for resources held by each other."
-    },
-    {
-        "front": "What is memory management?",
-        "back": "Memory management controls how programs use RAM safely and efficiently."
-    }
-]
-
-QUIZ = [
-    {
-        "question": "Which concept describes a program in execution?",
-        "options": ["Thread", "Process", "File", "Compiler"],
-        "answer": "Process",
-        "topic": "Process Management"
-    },
-    {
-        "question": "Which scheduling algorithm uses a fixed time slice?",
-        "options": ["FCFS", "SJF", "Round Robin", "Priority Scheduling"],
-        "answer": "Round Robin",
-        "topic": "CPU Scheduling"
-    },
-    {
-        "question": "Deadlock means that processes...",
-        "options": [
-            "Finish quickly",
-            "Wait forever for resources",
-            "Use less memory",
-            "Run in parallel"
-        ],
-        "answer": "Wait forever for resources",
-        "topic": "Deadlocks"
-    }
-]
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
 
 # ============================================================
-# HELPER FUNCTIONS
+# HELPERS
 # ============================================================
 
-def extract_pdf_text(uploaded_file):
-    try:
-        reader = PdfReader(uploaded_file)
-        text = ""
-
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
-
-        return text.strip()
-
-    except Exception:
-        return ""
-
-
-def days_until_exam():
+def days_until_exam() -> int:
     remaining = st.session_state.exam_date - date.today()
     return max(remaining.days, 0)
 
 
-def get_mode():
-    if days_until_exam() <= 3:
-        return "Crash Mode"
-    return "Organized Mode"
+def app_mode() -> str:
+    return "Crash Mode" if days_until_exam() <= 3 else "Organized Mode"
 
 
-def calculate_readiness():
-    base = 72
+def readiness() -> int:
+    total_topics = max(len(st.session_state.topics), 1)
 
-    if st.session_state.quiz_score is not None:
-        quiz_bonus = int((st.session_state.quiz_score - 60) * 0.25)
-        base += quiz_bonus
+    return estimate_readiness(
+        uploaded=st.session_state.uploaded,
+        quiz_score=st.session_state.quiz_score,
+        weak_topics_count=len(st.session_state.weak_topics),
+        completed_topics=st.session_state.completed_topics,
+        total_topics=total_topics,
+    )
 
-    penalty = len(st.session_state.weak_topics) * 3
-    readiness = base - penalty
 
-    return max(0, min(100, readiness))
+def process_uploaded_pdf(uploaded_file):
+    text = extract_pdf_text(uploaded_file)
+
+    if not text:
+        st.error("The PDF was uploaded, but no readable text was extracted. Try a text-based PDF.")
+        return
+
+    topics = detect_topics_from_text(text)
+    summary = generate_summary(text)
+    key_points = generate_key_points(text)
+    flashcards = generate_flashcards(text)
+    quiz = generate_quiz(text)
+
+    st.session_state.uploaded = True
+    st.session_state.lecture_name = uploaded_file.name
+    st.session_state.lecture_text = text
+    st.session_state.topics = topics
+    st.session_state.summary = summary
+    st.session_state.key_points = key_points
+    st.session_state.flashcards = flashcards
+    st.session_state.quiz = quiz
+    st.session_state.completed_topics = max(1, len(topics) // 2)
+    st.session_state.quiz_score = None
+    st.session_state.weak_topics = []
 
 
 # ============================================================
@@ -281,18 +226,24 @@ st.sidebar.caption("The Operating System for University Students")
 page = st.sidebar.radio(
     "Navigation",
     [
-        "Home",
+        "Dashboard",
         "Upload Lecture",
         "Study Workspace",
-        "Exam Mode",
-        "Quiz & Weakness",
-        "AI Study Chat"
+        "Exam Planner",
+        "Quiz",
+        "AI Study Chat",
     ]
 )
 
 st.sidebar.divider()
 
-st.sidebar.info("Demo Subject: Operating Systems")
+if st.session_state.uploaded:
+    st.sidebar.success(f"Loaded: {st.session_state.lecture_name}")
+else:
+    st.sidebar.warning("No lecture uploaded yet")
+
+st.sidebar.metric("Readiness", f"{readiness()}%")
+st.sidebar.metric("Mode", app_mode())
 
 
 # ============================================================
@@ -303,9 +254,9 @@ st.markdown('<div class="badge">AI-powered study workspace</div>', unsafe_allow_
 
 st.markdown(
     """
-    <div class="main-title">
+    <div class="hero-title">
         Turn lecture PDFs into<br>
-        a complete <span class="gradient-text">study plan</span>
+        a complete <span class="gradient">study system</span>
     </div>
     """,
     unsafe_allow_html=True
@@ -313,9 +264,9 @@ st.markdown(
 
 st.markdown(
     """
-    <div class="subtitle">
-        StudyOS helps university students upload lectures, generate summaries,
-        create flashcards, test themselves, detect weak topics, and prepare before exams.
+    <div class="hero-subtitle">
+        Upload a lecture PDF. StudyOS generates a summary, key points, flashcards,
+        quiz questions, exam plan, weakness profile, and a subject-scoped study chat.
     </div>
     """,
     unsafe_allow_html=True
@@ -323,17 +274,17 @@ st.markdown(
 
 
 # ============================================================
-# PAGE: HOME
+# PAGE: DASHBOARD
 # ============================================================
 
-if page == "Home":
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-
-    st.markdown('<div class="section-heading">Calm Dashboard</div>', unsafe_allow_html=True)
+if page == "Dashboard":
     st.markdown(
         """
-        <div class="section-description">
-            Instead of asking “what should I study?”, the student sees exactly where they stand.
+        <div class="card">
+            <div class="card-title">Calm Dashboard</div>
+            <div class="card-text">
+                The student opens one screen and immediately knows what to do next.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -345,96 +296,91 @@ if page == "Home":
         st.metric("Days Until Exam", f"{days_until_exam()} days")
 
     with col2:
-        st.metric("Exam Readiness", f"{calculate_readiness()}%")
+        st.metric("Exam Readiness", f"{readiness()}%")
 
     with col3:
-        st.metric("Topics Left", len(st.session_state.weak_topics))
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    st.subheader("Next Best Action")
-
-    st.success("Review Deadlocks first, then take a short quiz to improve your readiness score.")
+        st.metric("Weak Topics", len(st.session_state.weak_topics))
 
     st.divider()
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
+    if app_mode() == "Crash Mode":
         st.markdown(
             """
-            <div class="feature-box">
-                <div class="feature-title">📄 PDF to Workspace</div>
-                <div class="feature-text">
-                    Upload a lecture and instantly generate summaries, flashcards, quiz questions, and a plan.
-                </div>
+            <div class="crash">
+                🚨 Crash Mode is active. Focus on high-impact topics, weak areas, and fast review.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            """
+            <div class="organized">
+                ✅ Organized Mode is active. Follow your day-by-day study plan.
             </div>
             """,
             unsafe_allow_html=True
         )
 
-    with col2:
-        st.markdown(
-            """
-            <div class="feature-box">
-                <div class="feature-title">🚨 Smart Exam Mode</div>
-                <div class="feature-text">
-                    The app switches between organized planning and Crash Mode based on the exam date.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    st.subheader("Next Best Action")
 
-    with col3:
-        st.markdown(
-            """
-            <div class="feature-box">
-                <div class="feature-title">🧠 Weakness Detection</div>
-                <div class="feature-text">
-                    The app tracks quiz mistakes and recommends which topics to review first.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True
+    if not st.session_state.uploaded:
+        st.info("Upload a lecture PDF first to generate your study workspace.")
+    elif st.session_state.weak_topics:
+        st.success(f"Review **{st.session_state.weak_topics[0]}** first, then retake the quiz.")
+    else:
+        st.success("Take the generated quiz to identify your weak topics.")
+
+    st.subheader("Topic Progress")
+
+    if st.session_state.topics:
+        progress_df = pd.DataFrame(
+            {
+                "Topic": st.session_state.topics,
+                "Status": [
+                    "Completed" if i < st.session_state.completed_topics else "Needs Review"
+                    for i in range(len(st.session_state.topics))
+                ],
+            }
         )
+        st.dataframe(progress_df, use_container_width=True)
+    else:
+        st.info("No topics detected yet. Upload a lecture to begin.")
 
 
 # ============================================================
-# PAGE: UPLOAD LECTURE
+# PAGE: UPLOAD
 # ============================================================
 
 elif page == "Upload Lecture":
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-
-    st.markdown('<div class="section-heading">Upload Lecture</div>', unsafe_allow_html=True)
     st.markdown(
         """
-        <div class="section-description">
-            Upload a lecture PDF. In the real product, AI would process the lecture and generate a full workspace.
+        <div class="card">
+            <div class="card-title">Upload Lecture PDF</div>
+            <div class="card-text">
+                Upload a text-based lecture PDF. StudyOS will process the real content and build the workspace.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    uploaded_file = st.file_uploader("Upload lecture PDF", type=["pdf"])
+    uploaded_file = st.file_uploader("Choose a lecture PDF", type=["pdf"])
 
     if uploaded_file is not None:
-        with st.spinner("Processing lecture..."):
-            text = extract_pdf_text(uploaded_file)
+        if st.button("Generate Study Workspace"):
+            with st.spinner("Reading PDF and generating study materials..."):
+                process_uploaded_pdf(uploaded_file)
 
-        st.session_state.uploaded = True
-        st.session_state.uploaded_text = text
+            st.success("Study workspace generated successfully.")
+            st.balloons()
 
-        st.success("Lecture processed successfully. Study workspace generated.")
+    if st.session_state.uploaded:
+        st.subheader("Uploaded Lecture")
+        st.write(st.session_state.lecture_name)
 
-        if text:
-            with st.expander("Preview extracted text"):
-                st.write(text[:1500])
-        else:
-            st.warning("PDF uploaded, but no readable text was extracted. This may happen with scanned PDFs.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
+        with st.expander("Preview extracted text"):
+            st.write(st.session_state.lecture_text[:2500])
 
 
 # ============================================================
@@ -442,182 +388,175 @@ elif page == "Upload Lecture":
 # ============================================================
 
 elif page == "Study Workspace":
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-
-    st.markdown('<div class="section-heading">Generated Study Workspace</div>', unsafe_allow_html=True)
-
     if not st.session_state.uploaded:
-        st.info("No lecture uploaded yet. This page shows demo content.")
-    else:
-        st.success("Workspace generated from your uploaded lecture.")
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.metric("Summaries", "1")
-
-    with col2:
-        st.metric("Flashcards", "18")
-
-    with col3:
-        st.metric("Quiz Questions", "10")
-
-    st.subheader("Generated Summary")
-
-    st.write(
-        """
-        This lecture introduces important Operating Systems concepts such as process management,
-        CPU scheduling, memory management, deadlocks, and file systems. The main exam focus should be
-        definitions, comparisons between scheduling algorithms, and the conditions that cause deadlock.
-        """
-    )
-
-    st.subheader("Key Points")
+        st.warning("Upload a lecture first.")
+        st.stop()
 
     st.markdown(
         """
-        - A process is a program in execution.
-        - CPU scheduling decides which process runs next.
-        - Round Robin uses a fixed time slice.
-        - Deadlock happens when processes wait forever for resources.
-        - Memory management controls RAM usage and protection.
-        """
-    )
-
-    st.subheader("Generated Flashcards")
-
-    for card in FLASHCARDS:
-        with st.expander(card["front"]):
-            st.write(card["back"])
-
-
-# ============================================================
-# PAGE: EXAM MODE
-# ============================================================
-
-elif page == "Exam Mode":
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-
-    st.markdown('<div class="section-heading">Smart Exam Mode</div>', unsafe_allow_html=True)
-    st.markdown(
-        """
-        <div class="section-description">
-            StudyOS changes the study strategy based on how close the exam is.
+        <div class="card">
+            <div class="card-title">Generated Study Workspace</div>
+            <div class="card-text">
+                These materials were generated from your uploaded PDF.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    st.session_state.exam_date = st.date_input(
-        "Choose your exam date",
-        value=st.session_state.exam_date
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Topics", len(st.session_state.topics))
+
+    with col2:
+        st.metric("Flashcards", len(st.session_state.flashcards))
+
+    with col3:
+        st.metric("Quiz Questions", len(st.session_state.quiz))
+
+    with col4:
+        st.metric("Readiness", f"{readiness()}%")
+
+    st.subheader("Detected Topics")
+    st.write(", ".join(st.session_state.topics))
+
+    st.subheader("Generated Summary")
+    st.write(st.session_state.summary)
+
+    st.subheader("Key Points")
+    for point in st.session_state.key_points:
+        st.markdown(f"- {point}")
+
+    st.subheader("Flashcards")
+    if st.session_state.flashcards:
+        for i, card in enumerate(st.session_state.flashcards, start=1):
+            with st.expander(f"{i}. {card['front']}"):
+                st.write(card["back"])
+    else:
+        st.info("No flashcards were generated. Try a longer lecture PDF.")
+
+
+# ============================================================
+# PAGE: EXAM PLANNER
+# ============================================================
+
+elif page == "Exam Planner":
+    st.markdown(
+        """
+        <div class="card">
+            <div class="card-title">Smart Exam Planner</div>
+            <div class="card-text">
+                StudyOS changes the plan depending on how close the exam is.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
     )
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.session_state.exam_date = st.date_input(
+            "Exam date",
+            value=st.session_state.exam_date
+        )
+
+    with col2:
+        st.session_state.hours_per_day = st.number_input(
+            "Available study hours per day",
+            min_value=0.5,
+            max_value=12.0,
+            value=float(st.session_state.hours_per_day),
+            step=0.5
+        )
 
     st.metric("Days Until Exam", f"{days_until_exam()} days")
 
-    mode = get_mode()
-
-    if mode == "Crash Mode":
+    if app_mode() == "Crash Mode":
         st.markdown(
             """
-            <div class="crash-box">
-                🚨 Crash Mode Activated: Your exam is close. Focus only on the highest-impact topics.
+            <div class="crash">
+                🚨 Crash Mode Activated: The exam is close. The app will ignore long planning
+                and focus on high-impact revision.
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        st.subheader("High-Priority Topics")
+        st.subheader("Crash Priorities")
 
+        priorities = st.session_state.weak_topics or st.session_state.topics[:3] or ["Review lecture summary"]
+
+        for item in priorities:
+            st.markdown(f"- **{item}**")
+
+        st.subheader("Rapid Revision Strategy")
         st.markdown(
             """
-            1. Deadlocks  
-            2. CPU Scheduling  
-            3. Memory Management  
-            """
-        )
-
-        st.subheader("Likely Exam Questions")
-
-        st.markdown(
-            """
-            - Explain the four necessary conditions for deadlock.
-            - Compare FCFS, SJF, and Round Robin.
-            - Explain paging and segmentation.
-            """
-        )
-
-        st.subheader("Rapid Revision Plan")
-
-        st.markdown(
-            """
-            - Review generated summary.
-            - Study flashcards.
-            - Take the weakness quiz.
-            - Revisit wrong-answer topics.
+            1. Read the generated summary.  
+            2. Review flashcards.  
+            3. Solve the quiz.  
+            4. Revisit weak topics.  
+            5. Ask the AI chat about confusing points.  
             """
         )
 
     else:
         st.markdown(
             """
-            <div class="organized-box">
-                ✅ Organized Mode Activated: Your exam is not close yet. Follow the day-by-day study plan.
+            <div class="organized">
+                ✅ Organized Mode Activated: You have enough time for a structured plan.
             </div>
             """,
             unsafe_allow_html=True
         )
 
-        plan = pd.DataFrame(
-            {
-                "Day": ["Day 1", "Day 2", "Day 3", "Day 4"],
-                "Focus": [
-                    "Process Management",
-                    "CPU Scheduling",
-                    "Memory Management",
-                    "Deadlocks"
-                ],
-                "Task": [
-                    "Read summary + flashcards",
-                    "Practice scheduling questions",
-                    "Review definitions",
-                    "Take quiz and revise weak topics"
-                ]
-            }
-        )
+    st.subheader("Generated Study Plan")
 
-        st.dataframe(plan, use_container_width=True)
+    plan = build_study_plan(
+        topics=st.session_state.topics or ["Upload lecture first"],
+        days_left=days_until_exam(),
+        hours_per_day=st.session_state.hours_per_day,
+    )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.dataframe(plan, use_container_width=True)
 
 
 # ============================================================
-# PAGE: QUIZ & WEAKNESS
+# PAGE: QUIZ
 # ============================================================
 
-elif page == "Quiz & Weakness":
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
+elif page == "Quiz":
+    if not st.session_state.uploaded:
+        st.warning("Upload a lecture first.")
+        st.stop()
 
-    st.markdown('<div class="section-heading">Quiz & Weakness Detection</div>', unsafe_allow_html=True)
     st.markdown(
         """
-        <div class="section-description">
-            The quiz is not only for testing. It teaches the app what the student is weak in.
+        <div class="card">
+            <div class="card-title">Quiz & Weakness Detection</div>
+            <div class="card-text">
+                The quiz is generated from your lecture. Your wrong answers become weak topics.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
+    if not st.session_state.quiz:
+        st.info("No quiz questions were generated from this PDF.")
+        st.stop()
+
     answers = []
 
-    with st.form("quiz_form"):
-        for index, item in enumerate(QUIZ):
+    with st.form("lecture_quiz"):
+        for i, q in enumerate(st.session_state.quiz):
+            st.markdown(f"**Question {i + 1}**")
             answer = st.radio(
-                item["question"],
-                item["options"],
-                key=f"quiz_{index}"
+                q["question"],
+                q["options"],
+                key=f"quiz_{i}"
             )
             answers.append(answer)
 
@@ -627,97 +566,107 @@ elif page == "Quiz & Weakness":
         correct = 0
         weak_topics = []
 
-        for selected, item in zip(answers, QUIZ):
-            if selected == item["answer"]:
+        for selected, q in zip(answers, st.session_state.quiz):
+            if selected == q["answer"]:
                 correct += 1
             else:
-                weak_topics.append(item["topic"])
+                weak_topics.append(q["topic"])
 
-        score = int((correct / len(QUIZ)) * 100)
+        score = int((correct / len(st.session_state.quiz)) * 100)
 
         st.session_state.quiz_score = score
-        st.session_state.weak_topics = weak_topics
+        st.session_state.weak_topics = list(dict.fromkeys(weak_topics))
 
         st.metric("Quiz Score", f"{score}%")
 
-        if weak_topics:
+        if st.session_state.weak_topics:
             st.warning("Weak topics detected:")
-            for topic in weak_topics:
+            for topic in st.session_state.weak_topics:
                 st.write(f"- {topic}")
         else:
             st.success("Excellent. No weak topics detected.")
 
+        st.subheader("Answer Review")
+
+        for i, q in enumerate(st.session_state.quiz):
+            st.markdown(f"**Q{i + 1}: Correct answer:** {q['answer']}")
+            st.caption(q["explanation"])
+
     st.subheader("Current Weakness Profile")
 
-    weakness_table = pd.DataFrame(
-        {
-            "Topic": TOPICS,
-            "Status": [
-                "Strong",
-                "Medium",
-                "Needs Review",
-                "Weak",
-                "Not Started"
-            ],
-            "Recommended Action": [
-                "Quick review only",
-                "Practice one question",
-                "Review definitions",
-                "Revise immediately",
-                "Start after weak topics"
-            ]
-        }
-    )
-
-    st.dataframe(weakness_table, use_container_width=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
+    if st.session_state.weak_topics:
+        weakness_df = pd.DataFrame(
+            {
+                "Weak Topic": st.session_state.weak_topics,
+                "Recommended Action": [
+                    "Review summary, flashcards, and ask the AI chat for clarification."
+                    for _ in st.session_state.weak_topics
+                ],
+            }
+        )
+        st.dataframe(weakness_df, use_container_width=True)
+    else:
+        st.info("Take the quiz to generate a weakness profile.")
 
 
 # ============================================================
-# PAGE: AI STUDY CHAT
+# PAGE: AI CHAT
 # ============================================================
 
 elif page == "AI Study Chat":
-    st.markdown('<div class="section-card">', unsafe_allow_html=True)
-
-    st.markdown('<div class="section-heading">Subject-Scoped AI Chat</div>', unsafe_allow_html=True)
     st.markdown(
         """
-        <div class="section-description">
-            This is not a generic chatbot. It answers as if it is grounded in the student's uploaded lecture.
+        <div class="card">
+            <div class="card-title">Subject-Scoped AI Study Chat</div>
+            <div class="card-text">
+                Ask questions from your uploaded lecture. This version retrieves the most relevant lecture lines.
+            </div>
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    st.info("Demo mode: responses are simulated for the prototype.")
+    if not st.session_state.uploaded:
+        st.warning("Upload a lecture first.")
+        st.stop()
 
-    question = st.text_input("Ask something from your lecture")
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-    if question:
-        with st.chat_message("user"):
-            st.write(question)
+    for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
 
-        with st.chat_message("assistant"):
-            st.write(
-                """
-                Based on your Operating Systems lecture, this topic is important because it connects
-                to exam questions about processes, scheduling, memory, or deadlocks. Start with the
-                definition, then test yourself using the generated flashcards.
-                """
-            )
+    user_question = st.chat_input("Ask something from your lecture")
 
-        if st.button("Quiz me on this"):
-            st.write("Mini quiz: Which method is best for active recall?")
-            st.radio(
-                "Choose one:",
-                [
-                    "Only rereading",
-                    "Flashcards",
-                    "Highlighting everything",
-                    "Skipping weak topics"
-                ]
-            )
+    if user_question:
+        st.session_state.chat_history.append(
+            {
+                "role": "user",
+                "content": user_question
+            }
+        )
 
-    st.markdown("</div>", unsafe_allow_html=True)
+        answer = answer_from_lecture(
+            question=user_question,
+            text=st.session_state.lecture_text
+        )
+
+        st.session_state.chat_history.append(
+            {
+                "role": "assistant",
+                "content": answer
+            }
+        )
+
+        st.rerun()
+
+    st.divider()
+
+    if st.button("Quiz me on my weak topics"):
+        weak = st.session_state.weak_topics or st.session_state.topics[:2]
+
+        if weak:
+            st.info(f"Focus quiz suggestion: Review {', '.join(weak)} and retake the generated quiz.")
+        else:
+            st.info("Take the lecture quiz first to detect weak topics.")
