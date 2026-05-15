@@ -2,7 +2,6 @@
 StudyOS - AI Exam Operating System
 Production-Ready Hackathon MVP
 """
-!pip install openai
 
 import streamlit as st
 import PyPDF2
@@ -24,11 +23,6 @@ import os
 from datetime import datetime, date
 from PyPDF2 import PdfReader
 from openai import OpenAI
-try:
-    from openai import OpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    OPENAI_AVAILABLE = False
 
 # Page config
 st.set_page_config(
