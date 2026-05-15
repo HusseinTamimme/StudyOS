@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
+from datetime import date, timedelta
 from textwrap import dedent
 from PyPDF2 import PdfReader
 
@@ -19,10 +19,9 @@ st.set_page_config(
 
 # ============================================================
 # SAFE HTML RENDERER
-# This prevents random HTML code from appearing on screen.
 # ============================================================
 
-def html(content):
+def html(content: str):
     st.markdown(dedent(content).strip(), unsafe_allow_html=True)
 
 
@@ -31,16 +30,22 @@ def html(content):
 # ============================================================
 
 if "exam_date" not in st.session_state:
-    st.session_state.exam_date = date.today()
+    st.session_state.exam_date = date.today() + timedelta(days=2)
+
+if "uploaded_text" not in st.session_state:
+    st.session_state.uploaded_text = ""
+
+if "workspace_generated" not in st.session_state:
+    st.session_state.workspace_generated = False
 
 if "quiz_submitted" not in st.session_state:
     st.session_state.quiz_submitted = False
 
 if "quiz_score" not in st.session_state:
-    st.session_state.quiz_score = 0
+    st.session_state.quiz_score = 67
 
-if "uploaded_text" not in st.session_state:
-    st.session_state.uploaded_text = ""
+if "weak_topics" not in st.session_state:
+    st.session_state.weak_topics = ["Deadlocks", "Memory Management"]
 
 
 # ============================================================
@@ -51,22 +56,11 @@ html("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
-#MainMenu {
+#MainMenu, footer, header {
     visibility: hidden;
 }
 
-footer {
-    visibility: hidden;
-}
-
-header {
-    visibility: hidden;
-}
-
-[data-testid="stSidebar"] {
-    display: none;
-}
-
+[data-testid="stSidebar"],
 [data-testid="collapsedControl"] {
     display: none;
 }
@@ -77,20 +71,20 @@ html, body, [class*="css"] {
 
 .stApp {
     background:
-        radial-gradient(circle at top, rgba(124, 92, 255, 0.08), transparent 35%),
+        radial-gradient(circle at top center, rgba(116, 87, 246, 0.13), transparent 34%),
         linear-gradient(180deg, #fbfaff 0%, #f7f8fc 100%);
 }
 
 .block-container {
     padding-top: 0rem;
-    padding-left: 2rem;
-    padding-right: 2rem;
+    padding-left: 2.3rem;
+    padding-right: 2.3rem;
     max-width: 1200px;
 }
 
 /* Navbar */
 .navbar {
-    height: 64px;
+    height: 66px;
     background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(16px);
     border-bottom: 1px solid #ececf4;
@@ -113,23 +107,23 @@ html, body, [class*="css"] {
 }
 
 .logo-icon {
-    width: 36px;
-    height: 36px;
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
-    background: linear-gradient(135deg, #7457ff, #9d7cff);
+    background: linear-gradient(135deg, #7057ff, #9d7cff);
     display: flex;
     align-items: center;
     justify-content: center;
     color: white;
     font-size: 18px;
-    font-weight: 800;
+    font-weight: 900;
 }
 
 .logo-text {
-    font-size: 21px;
+    font-size: 22px;
     font-weight: 900;
-    color: #232536;
-    letter-spacing: -0.5px;
+    color: #222434;
+    letter-spacing: -0.7px;
 }
 
 .logo-text span {
@@ -138,7 +132,6 @@ html, body, [class*="css"] {
 
 .nav-links {
     display: flex;
-    align-items: center;
     gap: 12px;
 }
 
@@ -168,7 +161,7 @@ html, body, [class*="css"] {
 
 .user-name {
     font-size: 13px;
-    color: #262837;
+    color: #252737;
     font-weight: 900;
 }
 
@@ -179,9 +172,9 @@ html, body, [class*="css"] {
 }
 
 .avatar {
-    width: 36px;
-    height: 36px;
-    background: linear-gradient(135deg, #7457ff, #9d7cff);
+    width: 38px;
+    height: 38px;
+    background: linear-gradient(135deg, #7057ff, #9d7cff);
     color: white;
     border-radius: 50%;
     display: flex;
@@ -193,7 +186,7 @@ html, body, [class*="css"] {
 
 /* Hero */
 .hero {
-    margin-top: 112px;
+    margin-top: 110px;
     text-align: center;
 }
 
@@ -211,7 +204,7 @@ html, body, [class*="css"] {
 }
 
 .hero-title {
-    font-size: 54px;
+    font-size: 52px;
     line-height: 1.08;
     font-weight: 900;
     color: #232536;
@@ -228,36 +221,107 @@ html, body, [class*="css"] {
 .hero-subtitle {
     font-size: 18px;
     color: #85889a;
-    max-width: 740px;
-    margin: 0 auto 38px auto;
+    max-width: 760px;
+    margin: 0 auto 36px auto;
     line-height: 1.7;
     font-weight: 700;
 }
 
-/* Calm Dashboard */
-.dashboard-shell {
-    max-width: 900px;
-    margin: 0 auto 34px auto;
+/* General Cards */
+.glass-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #ececf4;
+    border-radius: 28px;
+    box-shadow: 0 20px 55px rgba(40, 40, 70, 0.06);
 }
 
-.dashboard-title {
-    font-size: 26px;
+.section-card {
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid #ececf4;
+    border-radius: 28px;
+    padding: 28px;
+    box-shadow: 0 20px 55px rgba(40, 40, 70, 0.06);
+    margin-top: 30px;
+}
+
+.section-title {
+    font-size: 28px;
+    font-weight: 900;
+    color: #252737;
+    letter-spacing: -0.8px;
+    margin-bottom: 8px;
+}
+
+.section-subtitle {
+    font-size: 14px;
+    color: #85889a;
+    font-weight: 700;
+    line-height: 1.6;
+}
+
+/* Calm Dashboard */
+.calm-card {
+    max-width: 940px;
+    margin: 0 auto 34px auto;
+    padding: 30px;
+}
+
+.calm-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+    gap: 20px;
+    margin-bottom: 22px;
+}
+
+.calm-title {
+    font-size: 28px;
     font-weight: 900;
     color: #232536;
-    margin-bottom: 8px;
-    text-align: center;
+    letter-spacing: -0.8px;
 }
 
-.dashboard-subtitle {
+.calm-subtitle {
     color: #85889a;
-    text-align: center;
     font-weight: 700;
-    margin-bottom: 20px;
+    margin-top: 5px;
 }
 
-/* Upload card */
+.mode-pill {
+    background: #fff4f4;
+    color: #d92d20;
+    border: 1px solid #ffd1d1;
+    padding: 8px 13px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.next-action {
+    background: linear-gradient(135deg, #f4f1ff, #ffffff);
+    border: 1px solid #e5ddff;
+    border-radius: 22px;
+    padding: 20px;
+    margin-top: 18px;
+}
+
+.next-action-label {
+    color: #7357f6;
+    font-weight: 900;
+    font-size: 13px;
+    margin-bottom: 5px;
+}
+
+.next-action-text {
+    color: #252737;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+/* Upload */
 .upload-shell {
-    max-width: 900px;
+    max-width: 940px;
     margin: 0 auto;
 }
 
@@ -265,27 +329,27 @@ html, body, [class*="css"] {
     background: rgba(255, 255, 255, 0.96);
     border: 2px dashed #dfd7ff;
     border-radius: 30px;
-    padding: 56px 34px 34px 34px;
+    padding: 42px 34px;
     text-align: center;
     box-shadow: 0 28px 80px rgba(116, 87, 246, 0.10);
 }
 
 .upload-icon {
-    width: 82px;
-    height: 82px;
+    width: 78px;
+    height: 78px;
     border-radius: 24px;
     background: linear-gradient(135deg, #7057ff, #9d7cff);
     color: white;
-    font-size: 36px;
+    font-size: 35px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin: 0 auto 24px auto;
+    margin: 0 auto 22px auto;
     box-shadow: 0 18px 34px rgba(116, 87, 246, 0.24);
 }
 
 .upload-title {
-    font-size: 25px;
+    font-size: 24px;
     font-weight: 900;
     color: #252737;
     margin-bottom: 8px;
@@ -296,50 +360,22 @@ html, body, [class*="css"] {
     color: #9a9caf;
     font-size: 14px;
     font-weight: 700;
-    margin-bottom: 22px;
 }
 
 .privacy-note {
     color: #9a9caf;
     font-size: 12px;
     font-weight: 800;
-    margin-top: 12px;
-    text-align: center;
+    margin-top: 14px;
 }
 
-/* File uploader */
-[data-testid="stFileUploader"] {
-    max-width: 420px;
-    margin: 18px auto 0 auto;
-}
-
-[data-testid="stFileUploader"] label {
-    display: none;
-}
-
-[data-testid="stFileUploader"] section {
-    background: white;
-    border: 1px solid #ececf4;
-    border-radius: 18px;
-}
-
-[data-testid="stFileUploader"] button {
-    background: linear-gradient(135deg, #7057ff, #9d7cff) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 14px !important;
-    font-weight: 900 !important;
-    padding: 0.65rem 1.25rem !important;
-    box-shadow: 0 12px 24px rgba(116, 87, 246, 0.22);
-}
-
-/* Feature cards */
+/* Feature Cards */
 .card-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 18px;
-    max-width: 900px;
-    margin: 34px auto 0 auto;
+    max-width: 940px;
+    margin: 30px auto 0 auto;
 }
 
 .feature-card {
@@ -377,42 +413,7 @@ html, body, [class*="css"] {
     font-weight: 650;
 }
 
-/* Section cards */
-.section-card {
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid #ececf4;
-    border-radius: 28px;
-    padding: 28px;
-    box-shadow: 0 18px 48px rgba(40, 40, 70, 0.05);
-    margin-top: 30px;
-}
-
-.section-title {
-    font-size: 27px;
-    font-weight: 900;
-    color: #252737;
-    letter-spacing: -0.7px;
-    margin-bottom: 8px;
-}
-
-.section-subtitle {
-    font-size: 14px;
-    color: #85889a;
-    font-weight: 700;
-    margin-bottom: 20px;
-}
-
-.mini-label {
-    color: #7357f6;
-    background: #f0edff;
-    border-radius: 999px;
-    padding: 6px 11px;
-    font-size: 12px;
-    font-weight: 900;
-    display: inline-block;
-    margin-bottom: 10px;
-}
-
+/* Mode Boxes */
 .crash-box {
     background: linear-gradient(135deg, #fff4f4, #fffafa);
     border: 1px solid #ffd6d6;
@@ -443,7 +444,43 @@ html, body, [class*="css"] {
     margin-bottom: 8px;
 }
 
-/* Streamlit widgets */
+.mini-label {
+    color: #7357f6;
+    background: #f0edff;
+    border-radius: 999px;
+    padding: 6px 11px;
+    font-size: 12px;
+    font-weight: 900;
+    display: inline-block;
+    margin-bottom: 10px;
+}
+
+/* Streamlit Widgets */
+[data-testid="stFileUploader"] {
+    max-width: 530px;
+    margin: 18px auto 0 auto;
+}
+
+[data-testid="stFileUploader"] label {
+    display: none;
+}
+
+[data-testid="stFileUploader"] section {
+    background: white;
+    border: 1px solid #ececf4;
+    border-radius: 18px;
+}
+
+[data-testid="stFileUploader"] button {
+    background: linear-gradient(135deg, #7057ff, #9d7cff) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 14px !important;
+    font-weight: 900 !important;
+    padding: 0.65rem 1.25rem !important;
+    box-shadow: 0 12px 24px rgba(116, 87, 246, 0.22);
+}
+
 .stMetric {
     background: white;
     border: 1px solid #ececf4;
@@ -473,6 +510,12 @@ div[data-testid="stDataFrame"] {
     overflow: hidden;
 }
 
+hr {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+}
+
+/* Responsive */
 @media (max-width: 900px) {
     .nav-links {
         display: none;
@@ -493,13 +536,17 @@ div[data-testid="stDataFrame"] {
     .navbar {
         padding: 0 1.2rem;
     }
+
+    .calm-header {
+        flex-direction: column;
+    }
 }
 </style>
 """)
 
 
 # ============================================================
-# DATA
+# DEMO DATA
 # ============================================================
 
 LECTURE_TOPICS = [
@@ -513,19 +560,19 @@ LECTURE_TOPICS = [
 FLASHCARDS = [
     {
         "front": "What is a process?",
-        "back": "A process is a program in execution."
+        "back": "A process is a program in execution. It includes the program code, current activity, memory, and system resources."
     },
     {
         "front": "What is CPU scheduling?",
-        "back": "CPU scheduling decides which process gets CPU time next."
+        "back": "CPU scheduling decides which process gets CPU time next, helping improve system efficiency and responsiveness."
     },
     {
         "front": "What is a deadlock?",
-        "back": "A deadlock happens when processes wait forever for resources held by each other."
+        "back": "A deadlock happens when processes wait forever because each process holds a resource and waits for another."
     },
     {
         "front": "What is memory management?",
-        "back": "Memory management controls how programs use RAM efficiently and safely."
+        "back": "Memory management controls how programs use RAM efficiently, safely, and without interfering with each other."
     }
 ]
 
@@ -537,7 +584,7 @@ QUIZ = [
         "topic": "Process Management"
     },
     {
-        "question": "Which algorithm gives each process a fixed time slice?",
+        "question": "Which scheduling algorithm gives each process a fixed time slice?",
         "options": ["FCFS", "SJF", "Round Robin", "Priority Scheduling"],
         "answer": "Round Robin",
         "topic": "CPU Scheduling"
@@ -577,22 +624,30 @@ def extract_pdf_text(uploaded_file):
 
 
 def days_until_exam():
-    today = date.today()
-    remaining = st.session_state.exam_date - today
+    remaining = st.session_state.exam_date - date.today()
     return max(remaining.days, 0)
 
 
 def calculate_readiness():
-    base_progress = 0.64
-
     if st.session_state.quiz_submitted:
         quiz_factor = st.session_state.quiz_score / 100
     else:
-        quiz_factor = 0.55
+        quiz_factor = 0.67
 
-    readiness = int((base_progress * 0.6 + quiz_factor * 0.4) * 100)
-    return readiness
+    lecture_progress = 0.72
+    weakness_penalty = len(st.session_state.weak_topics) * 0.035
 
+    readiness = int(((lecture_progress * 0.6) + (quiz_factor * 0.4) - weakness_penalty) * 100)
+    return max(min(readiness, 100), 0)
+
+
+def current_mode():
+    return "Crash Mode" if days_until_exam() <= 3 else "Organized Mode"
+
+
+# ============================================================
+# UI RENDER FUNCTIONS
+# ============================================================
 
 def render_navbar():
     html("""
@@ -606,7 +661,7 @@ def render_navbar():
             <div class="nav-link nav-link-active">Dashboard</div>
             <div class="nav-link">My Lectures</div>
             <div class="nav-link">Study Planner</div>
-            <div class="nav-link">Profile</div>
+            <div class="nav-link">AI Chat</div>
         </div>
 
         <div class="user-wrap">
@@ -623,26 +678,39 @@ def render_navbar():
 def render_hero():
     html("""
     <div class="hero">
-        <div class="hero-badge">AI-powered study workspace</div>
+        <div class="hero-badge">The Operating System for University Students</div>
 
         <div class="hero-title">
-            Transform lectures into your<br>
-            complete <span class="gradient-text">study workspace</span>
+            Turn exam panic into<br>
+            a clear <span class="gradient-text">study plan</span>
         </div>
 
         <div class="hero-subtitle">
-            Upload a PDF and get summaries, flashcards, quizzes, and a personalized study plan in seconds.
+            Upload lecture PDFs and StudyOS creates summaries, flashcards, quizzes,
+            weakness detection, and a personalized exam plan in seconds.
         </div>
     </div>
     """)
 
 
 def render_calm_dashboard():
-    html("""
-    <div class="dashboard-shell">
-        <div class="dashboard-title">Calm Dashboard</div>
-        <div class="dashboard-subtitle">
-            The student sees exactly where they stand before the exam.
+    mode = current_mode()
+
+    if mode == "Crash Mode":
+        pill_text = "🚨 Crash Mode Active"
+    else:
+        pill_text = "✅ Organized Mode Active"
+
+    html(f"""
+    <div class="glass-card calm-card">
+        <div class="calm-header">
+            <div>
+                <div class="calm-title">Calm Dashboard</div>
+                <div class="calm-subtitle">
+                    One screen that tells the student exactly where they stand.
+                </div>
+            </div>
+            <div class="mode-pill">{pill_text}</div>
         </div>
     </div>
     """)
@@ -658,15 +726,28 @@ def render_calm_dashboard():
     with col3:
         st.metric("Topics Left", "2")
 
+    html("""
+    <div class="next-action">
+        <div class="next-action-label">NEXT BEST ACTION</div>
+        <div class="next-action-text">
+            Review Deadlocks, then take a 5-question quiz before moving to File Systems.
+        </div>
+    </div>
+    """)
 
-def render_upload_card():
+
+def render_upload_area():
     html("""
     <div class="upload-shell">
         <div class="upload-card">
             <div class="upload-icon">☁️</div>
-            <div class="upload-title">Drag & drop your lecture PDF</div>
-            <div class="upload-desc">or click below to browse from your computer</div>
-            <div class="privacy-note">🛡 Supports files up to 50MB · Encrypted & private</div>
+            <div class="upload-title">Upload your lecture PDF</div>
+            <div class="upload-desc">
+                StudyOS will generate a full study workspace from your material.
+            </div>
+            <div class="privacy-note">
+                🛡 Demo mode · Supports lecture PDFs · Private processing
+            </div>
         </div>
     </div>
     """)
@@ -677,32 +758,32 @@ def render_feature_cards():
     <div class="card-grid">
         <div class="feature-card">
             <div class="feature-icon">⚡</div>
-            <div class="feature-title">Instant Summaries</div>
+            <div class="feature-title">PDF to Workspace</div>
             <div class="feature-desc">
-                Turn long lecture PDFs into clean summaries, definitions, and key points.
+                Summaries, key points, flashcards, quizzes, and study plan from one upload.
+            </div>
+        </div>
+
+        <div class="feature-card">
+            <div class="feature-icon">🚨</div>
+            <div class="feature-title">Smart Exam Mode</div>
+            <div class="feature-desc">
+                Automatically switches from organized planning to Crash Mode near the exam.
             </div>
         </div>
 
         <div class="feature-card">
             <div class="feature-icon">🧠</div>
-            <div class="feature-title">Smart Flashcards</div>
+            <div class="feature-title">Weakness Detection</div>
             <div class="feature-desc">
-                Generate front/back flashcards directly from your actual lecture material.
-            </div>
-        </div>
-
-        <div class="feature-card">
-            <div class="feature-icon">📊</div>
-            <div class="feature-title">Exam Readiness</div>
-            <div class="feature-desc">
-                Know how ready you are before the exam with clear progress signals.
+                Tracks quiz mistakes and tells the student which topics to revisit first.
             </div>
         </div>
     </div>
     """)
 
 
-def render_section_header(title, subtitle):
+def render_section(title, subtitle):
     html(f"""
     <div class="section-card">
         <div class="section-title">{title}</div>
@@ -712,7 +793,7 @@ def render_section_header(title, subtitle):
 
 
 # ============================================================
-# MAIN APP
+# APP START
 # ============================================================
 
 render_navbar()
@@ -721,7 +802,7 @@ render_calm_dashboard()
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-render_upload_card()
+render_upload_area()
 
 uploaded_file = st.file_uploader(
     "Upload lecture PDF",
@@ -733,86 +814,75 @@ render_feature_cards()
 
 
 # ============================================================
-# BEFORE UPLOAD
-# ============================================================
-
-if uploaded_file is None:
-    st.markdown("<br><br>", unsafe_allow_html=True)
-
-    html("""
-    <div class="section-card">
-        <div class="mini-label">Demo Flow</div>
-        <div class="section-title">Upload a lecture to begin</div>
-        <div class="section-subtitle">
-            After upload, StudyOS will show the generated summary, flashcards, quiz,
-            Crash Mode, weakness detection, and subject AI chat.
-        </div>
-    </div>
-    """)
-
-
-# ============================================================
-# AFTER UPLOAD
+# PROCESS UPLOAD
 # ============================================================
 
 if uploaded_file is not None:
-    with st.spinner("StudyOS is generating your study workspace..."):
+    with st.spinner("StudyOS is generating your workspace..."):
         extracted_text = extract_pdf_text(uploaded_file)
         st.session_state.uploaded_text = extracted_text
+        st.session_state.workspace_generated = True
 
-    st.markdown("<br>", unsafe_allow_html=True)
     st.success("Lecture processed successfully. Your study workspace is ready.")
 
-    render_section_header(
+
+# ============================================================
+# DEMO WORKSPACE
+# ============================================================
+
+if st.session_state.workspace_generated:
+    render_section(
         "Generated Study Workspace",
-        "StudyOS analyzed your lecture and created summaries, flashcards, quiz questions, and an exam plan."
+        "StudyOS analyzed the lecture and created everything the student needs to revise smarter."
     )
 
-    col1, col2, col3 = st.columns(3)
+    metric1, metric2, metric3, metric4 = st.columns(4)
 
-    with col1:
-        st.metric("Exam Readiness", f"{calculate_readiness()}%")
+    with metric1:
+        st.metric("Summaries", "1")
 
-    with col2:
-        st.metric("Flashcards Created", "18")
+    with metric2:
+        st.metric("Flashcards", "18")
 
-    with col3:
+    with metric3:
         st.metric("Quiz Questions", "10")
 
-    st.markdown("## Generated Summary")
+    with metric4:
+        st.metric("Readiness", f"{calculate_readiness()}%")
+
+    st.markdown("## 1. Generated Summary")
 
     st.write(
         """
-        This lecture introduces important course concepts and highlights the material most likely
-        to matter during exam preparation. StudyOS extracted the main ideas, definitions,
-        and review points from the uploaded file.
+        This lecture introduces key Operating Systems concepts including process management,
+        CPU scheduling, memory management, deadlocks, and file systems. StudyOS identified
+        the most exam-relevant definitions, comparisons, and likely question areas.
         """
     )
 
     if st.session_state.uploaded_text:
         with st.expander("Preview extracted lecture text"):
-            preview_text = st.session_state.uploaded_text[:1500]
-            st.write(preview_text)
+            st.write(st.session_state.uploaded_text[:1600])
 
-    st.markdown("## Key Points")
+    st.markdown("## 2. Key Points")
 
     st.markdown(
         """
-        - The lecture contains several exam-relevant definitions.
-        - The most important concepts were extracted automatically.
-        - Flashcards were generated from the main ideas.
-        - Quiz questions were created to test understanding.
-        - The study plan changes depending on the exam date.
+        - A process is a program in execution.
+        - CPU scheduling decides which process gets CPU time next.
+        - Round Robin scheduling gives each process a fixed time slice.
+        - Deadlock happens when processes wait forever for resources.
+        - Memory management controls how programs use RAM safely and efficiently.
         """
     )
 
-    st.markdown("## Generated Flashcards")
+    st.markdown("## 3. Generated Flashcards")
 
     for card in FLASHCARDS:
         with st.expander(card["front"]):
             st.write(card["back"])
 
-    st.markdown("## Smart Exam Planner")
+    st.markdown("## 4. Smart Exam Planner")
 
     st.session_state.exam_date = st.date_input(
         "Choose your exam date",
@@ -827,19 +897,33 @@ if uploaded_file is not None:
         html("""
         <div class="crash-box">
             <div class="crash-title">Crash Mode Activated</div>
-            Your exam is close. StudyOS is now prioritizing high-impact topics, likely exam questions,
-            and rapid revision instead of a full long-term schedule.
+            Your exam is close. StudyOS stops giving a long schedule and focuses only on
+            high-impact topics, likely exam questions, and rapid revision.
         </div>
         """)
 
-        st.markdown("### High-Priority Topics")
-        st.markdown(
-            """
-            1. Deadlocks  
-            2. CPU Scheduling  
-            3. Memory Management  
-            """
-        )
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            st.markdown("### High-Priority Topics")
+            st.markdown(
+                """
+                1. Deadlocks  
+                2. CPU Scheduling  
+                3. Memory Management  
+                """
+            )
+
+        with col_b:
+            st.markdown("### Rapid Revision Plan")
+            st.markdown(
+                """
+                - Review Deadlocks summary  
+                - Study generated flashcards  
+                - Take the weakness quiz  
+                - Revisit wrong-answer topics  
+                """
+            )
 
         st.markdown("### Likely Exam Questions")
         st.markdown(
@@ -854,7 +938,7 @@ if uploaded_file is not None:
         html("""
         <div class="success-box">
             <div class="success-title">Organized Mode Activated</div>
-            Your exam is not too close yet. StudyOS created a structured day-by-day study plan.
+            Your exam is not too close yet. StudyOS created a structured day-by-day plan.
         </div>
         """)
 
@@ -865,12 +949,12 @@ if uploaded_file is not None:
                     "Process Management",
                     "CPU Scheduling",
                     "Memory Management",
-                    "Deadlocks"
+                    "Deadlocks + Quiz"
                 ],
                 "Task": [
-                    "Read summary and review flashcards",
+                    "Read summary and flashcards",
                     "Practice scheduling questions",
-                    "Review memory definitions",
+                    "Review definitions",
                     "Take quiz and revise weak topics"
                 ]
             }
@@ -878,7 +962,7 @@ if uploaded_file is not None:
 
         st.dataframe(plan_df, use_container_width=True)
 
-    st.markdown("## Quiz & Weakness Detection")
+    st.markdown("## 5. Quiz & Weakness Detection")
 
     answers = []
 
@@ -907,6 +991,7 @@ if uploaded_file is not None:
 
         st.session_state.quiz_submitted = True
         st.session_state.quiz_score = score
+        st.session_state.weak_topics = weak_topics
 
         st.metric("Quiz Score", f"{score}%")
 
@@ -917,7 +1002,7 @@ if uploaded_file is not None:
         else:
             st.success("Excellent. No weak topics detected.")
 
-    st.markdown("## Weakness Profile")
+    st.markdown("### Weakness Profile")
 
     weakness_df = pd.DataFrame(
         {
@@ -931,7 +1016,7 @@ if uploaded_file is not None:
             "Status": [
                 "Strong",
                 "Medium",
-                "Good",
+                "Needs Review",
                 "Weak",
                 "Not Started"
             ],
@@ -947,9 +1032,9 @@ if uploaded_file is not None:
 
     st.dataframe(weakness_df, use_container_width=True)
 
-    st.markdown("## Subject-Scoped AI Chat")
+    st.markdown("## 6. Subject-Scoped AI Chat")
 
-    st.info("Demo mode: this chat gives simulated answers based on the uploaded lecture.")
+    st.info("Demo mode: this assistant answers as if it is grounded in the uploaded lecture.")
 
     user_question = st.text_input("Ask something from this lecture")
 
@@ -960,16 +1045,31 @@ if uploaded_file is not None:
         with st.chat_message("assistant"):
             st.write(
                 """
-                Based on your uploaded lecture, this topic is important because it connects directly
-                to the main exam concepts. You should review the definition first, then test yourself
-                using flashcards and quiz questions.
+                Based on your uploaded Operating Systems lecture, this topic is important
+                because it is connected to exam questions about process behavior, scheduling,
+                memory usage, or deadlock conditions. Start by reviewing the definition, then
+                test yourself using the generated flashcards.
                 """
             )
 
         if st.button("Quiz me on this"):
-            st.write("Mini quiz: Which study method helps you test recall quickly?")
+            st.write("Mini quiz: Which method helps you test recall quickly?")
             st.radio(
                 "Choose one:",
                 ["Passive reading", "Flashcards", "Ignoring weak topics", "Only highlighting"],
                 key="mini_quiz"
             )
+
+else:
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    html("""
+    <div class="section-card">
+        <div class="mini-label">Demo Story</div>
+        <div class="section-title">The panic becomes a plan</div>
+        <div class="section-subtitle">
+            Upload a lecture PDF to show the full flow: generated summary, flashcards,
+            Smart Exam Mode, Crash Mode, weakness detection, and subject-scoped AI chat.
+        </div>
+    </div>
+    """)
